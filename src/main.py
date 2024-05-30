@@ -383,8 +383,7 @@ def window_main_menu():
 
 def main():
     # Login menu transitions to main menu
-    #window_login_menu()
-    window_main_menu()
+    window_login_menu()
 
 
 if __name__ == '__main__':
