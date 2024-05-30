@@ -25,6 +25,24 @@ def update_login_count(line_count_text):
     line_count_text.set(str(counter))
 
 
+# Format the database
+def format_database():
+    logins_set = set()
+    logins_str = ""
+    with open('database.txt', 'r') as file:
+        # Store content as set for accessibility
+        for line in file:
+            current_login = line.strip()
+            if current_login:
+                logins_set.add(current_login)
+            print(line)
+
+        # Now store format into returnable string
+        for i in logins_set:
+            logins_str += i + "\n"
+    return logins_str
+
+
 def window_login_menu():
     # Retrieves credentials
     def get_login_credentials():
@@ -132,7 +150,7 @@ def window_main_menu():
 
         main_menu.destroy()
         show_logins = Tk()
-        show_logins.geometry("700x350")
+        show_logins.geometry("700x550")
         show_logins.title("Bunkr")
         show_logins.configure(background='#3d3c3c')
         show_logins.iconbitmap("assets/bunkrlogo.ico")
@@ -141,11 +159,35 @@ def window_main_menu():
         center_window(show_logins)
 
         # Create a frame to act as padding with a different color
-        back_padding_frame = Frame(show_logins, bg="#4d4c4c", width=400, height=400)
+        back_padding_frame = Frame(show_logins, bg="#4d4c4c", width=100, height=100)
         back_padding_frame.pack(padx=20, pady=20)
 
         back_button = Button(back_padding_frame, text="Back", font=("Jersey 15", 13), bg="#7e68a8", command=exit_logins)
         back_button.pack(side=LEFT, padx=10, pady=10)  # Controls vertical pad for whole bar
+
+        logins_frame = Frame(show_logins, bg="#4d4c4c", width=670, height=230)
+        logins_frame.place(relx=0.065, rely=0.15)
+
+        # Label for "Logins :"
+        logins_label = Label(logins_frame, text="Logins :", bg="#4d4c4c", fg="white", font=("Arial", 12))
+        logins_label.pack(anchor='w', padx=10, pady=5)
+
+        # Scrollable Text Box
+        text_frame = Frame(logins_frame, bg="#4d4c4c")
+        text_frame.pack(fill=BOTH, expand=True, padx=10)
+
+        scrollbar = Scrollbar(text_frame)
+        scrollbar.pack(side=RIGHT, fill=Y)
+
+        logins_text = Text(text_frame, wrap=NONE, yscrollcommand=scrollbar.set, bg="#3d3c3c", fg="white",
+                           font=("Arial", 10))
+        logins_text.pack(fill=BOTH, expand=True)
+
+        scrollbar.config(command=logins_text.yview)
+
+        # Load the formatted logins
+        logins_data = format_database()
+        logins_text.insert(END, logins_data)
 
     def add_logins():
         def exit_logins():
@@ -332,8 +374,8 @@ def window_main_menu():
     # Initial call to update the login count
     update_login_count(line_count_text)
 
-    # Force relog after 90 seconds
-    main_menu.after(90000, destroy_all_windows)
+    # Force relog after 120 seconds
+    main_menu.after(120000, destroy_all_windows)
 
     # Run the main event loop
     main_menu.mainloop()
@@ -341,7 +383,8 @@ def window_main_menu():
 
 def main():
     # Login menu transitions to main menu
-    window_login_menu()
+    #window_login_menu()
+    window_main_menu()
 
 
 if __name__ == '__main__':
