@@ -1,7 +1,7 @@
 from tkinter import *
-from encryptbunkr import encrypt_message, check_master_key_exists, return_user, return_pass
+from encryptbunkr import (encrypt_message, check_master_key_exists,
+                          return_user, return_pass, decrypt_message, decrypt_database, encrypt_database)
 import time
-
 
 # Centers the window being passed
 def center_window(window):
@@ -26,24 +26,31 @@ def update_login_count(line_count_text):
 
 
 # Format the database
-def format_database():
-    logins_set = set()
-    logins_str = ""
-    with open('database.txt', 'r') as file:
-        # Store content as set for accessibility
-        for line in file:
-            current_login = line.strip()
-            if current_login:
-                logins_set.add(current_login)
-            print(line)
+def format_database(show_passwords = 0):
+    encryption_key = check_master_key_exists()
+    decrypted_logins_list = decrypt_database(encryption_key)
 
-        # Now store format into returnable string
-        for i in logins_set:
-            logins_str += i + "\n"
-    return logins_str
+    formatted_logins_list = []
+    for string in list(decrypted_logins_list):
+        try:
+            login_user, login_pass, website = string.split(":")
+            if show_passwords == 0:
+                formatted_logins_list.append(f"{website}     |     {login_user}")
+            elif show_passwords == 1:
+                formatted_logins_list.append(f"{website}     |     {login_user}     |     {login_pass}")
+        except ValueError:
+            print(f"Error processing line: {string}")
+            continue
+
+
+    # Join list into a single string with newline characters
+    formatted_logins_str = "\n".join(formatted_logins_list)
+    return formatted_logins_str
+
 
 
 def window_login_menu():
+
     # Retrieves credentials
     def get_login_credentials():
         username = get_username.get()
@@ -85,12 +92,15 @@ def window_login_menu():
 
     # Exit the login menu and pass on to the main menu if
     # the login was successful
-    def login_successful():
+    def login():
+        encryption_key = check_master_key_exists()
         status = get_login_credentials()
         if status == 1:
+            encrypt_database(encryption_key)
             # Destroy the login and show the main menu
             login_menu.destroy()
             window_main_menu()
+
 
     # Create the Tkinter window
     login_menu = Tk()
@@ -128,7 +138,7 @@ def window_login_menu():
     get_password.pack(anchor=CENTER)
 
     # Create the button
-    button = Button(settings_frame, text="Enter", font=("Jersey 15", 15), width=10, command=login_successful,
+    button = Button(settings_frame, text="Enter", font=("Jersey 15", 15), width=10, command=login,
                     bg='#8360a8', fg='#dedede')
     # Place the button below the feedback label
     button.pack(anchor=CENTER, pady=(20, 10))
@@ -142,14 +152,36 @@ def window_login_menu():
 
 # The main menu
 def window_main_menu():
+
     # Menu pages
     def view_logins():
+        encryption_key = check_master_key_exists()
         def exit_logins():
             show_logins.destroy()
-            window_main_menu()
 
-        main_menu.destroy()
-        show_logins = Tk()
+        def on_checkbox_unchecked():
+            logins_text.config(state=NORMAL)  # Enable editing
+            logins_text.delete("1.0", END)  # Clear the text box
+            logins_text.insert(END, format_database(0))  # Insert new content for unchecked state
+            logins_text.config(state=DISABLED)  # Disable editing again
+            print("Text box has been reloaded")
+
+        def on_checkbox_checked():
+            # Assuming format_database(1) updates the data
+            logins_text.config(state=NORMAL)  # Enable editing
+            logins_text.delete("1.0", END)  # Clear the text box
+            updated_logins_data = format_database(1)
+            logins_text.insert(END, updated_logins_data)
+            logins_text.config(state=DISABLED)  # Disable editing again
+            print("Text box has been reloaded")
+
+        def checkbox_click():
+            if show_passwords_var.get():
+                on_checkbox_checked()
+            else:
+                on_checkbox_unchecked()
+
+        show_logins = Toplevel(main_menu)
         show_logins.geometry("700x550")
         show_logins.title("Bunkr")
         show_logins.configure(background='#3d3c3c')
@@ -165,6 +197,20 @@ def window_main_menu():
         back_button = Button(back_padding_frame, text="Back", font=("Jersey 15", 13), bg="#7e68a8", command=exit_logins)
         back_button.pack(side=LEFT, padx=10, pady=10)  # Controls vertical pad for whole bar
 
+        # Remove Duplicates Frame
+        show_passwords_frame = Frame(show_logins, bg="#4d4c4c", width=160, height=50)
+        show_passwords_frame.place(relx=0.7, rely=0.15)
+
+        # Variable to hold the checkbox state
+        show_passwords_var = BooleanVar()
+
+        # Remove Duplicates Checkbox
+        show_passwords_checkbox = Checkbutton(show_passwords_frame, text="Show Passwords", font=("Jersey 15", 13),
+                                              bg="#7e68a8",
+                                              variable=show_passwords_var, command=checkbox_click)
+        show_passwords_checkbox.place(relx=0.08, rely=0.2)
+
+        # Logins Frame
         logins_frame = Frame(show_logins, bg="#4d4c4c", width=670, height=230)
         logins_frame.place(relx=0.065, rely=0.15)
 
@@ -174,28 +220,30 @@ def window_main_menu():
 
         # Scrollable Text Box
         text_frame = Frame(logins_frame, bg="#4d4c4c")
-        text_frame.pack(fill=BOTH, expand=True, padx=10)
+        text_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
         scrollbar = Scrollbar(text_frame)
         scrollbar.pack(side=RIGHT, fill=Y)
 
         logins_text = Text(text_frame, wrap=NONE, yscrollcommand=scrollbar.set, bg="#3d3c3c", fg="white",
-                           font=("Arial", 10))
+                           font=("Arial", 10), width=50)
         logins_text.pack(fill=BOTH, expand=True)
-
         scrollbar.config(command=logins_text.yview)
 
         # Load the formatted logins
-        logins_data = format_database()
+        logins_data = format_database(0)
         logins_text.insert(END, logins_data)
+        logins_text.config(state=DISABLED)  # Make the text box read-only
+
+        # Encrypt the database before closing the window
+        encrypt_database(encryption_key)  # Assuming encryption_key is defined somewhere
+        show_logins.mainloop()
 
     def add_logins():
         def exit_logins():
             add_logins.destroy()
-            window_main_menu()
 
-        main_menu.destroy()
-        add_logins = Tk()
+        add_logins = Toplevel(main_menu)
         add_logins.geometry("700x350")
         add_logins.title("Bunkr")
         add_logins.configure(background='#3d3c3c')
@@ -214,10 +262,8 @@ def window_main_menu():
     def view_logs():
         def exit_logs():
             view_logs.destroy()
-            window_main_menu()
 
-        main_menu.destroy()
-        view_logs = Tk()
+        view_logs = Toplevel(main_menu)
         view_logs.geometry("700x350")
         view_logs.title("Bunkr")
         view_logs.configure(background='#3d3c3c')
@@ -237,7 +283,7 @@ def window_main_menu():
         def exit_help():
             view_help.destroy()
 
-        view_help = Toplevel()  # Create a new top-level window
+        view_help = Toplevel(main_menu)  # Create a new top-level window
         view_help.geometry("300x450")
         view_help.title("Bunkr Help Menu")
         view_help.configure(background='#3d3c3c')
@@ -278,10 +324,8 @@ def window_main_menu():
     def export_data():
         def exit_export_data():
             export_data.destroy()
-            window_main_menu()
 
-        main_menu.destroy()
-        export_data = Tk()
+        export_data = Toplevel(main_menu)
         export_data.geometry("700x350")
         export_data.title("Bunkr")
         export_data.configure(background='#3d3c3c')
@@ -379,6 +423,7 @@ def window_main_menu():
 
     # Run the main event loop
     main_menu.mainloop()
+
 
 
 def main():
