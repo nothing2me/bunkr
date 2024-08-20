@@ -1,7 +1,9 @@
 from tkinter import *
 from encryptbunkr import (encrypt_message, check_master_key_exists,
-                          return_user, return_pass, decrypt_message, decrypt_database, encrypt_database)
+                          return_user, return_pass, decrypt_database, encrypt_database)
 import time
+import datetime
+
 
 # Centers the window being passed
 def center_window(window):
@@ -26,33 +28,62 @@ def update_login_count(line_count_text):
 
 
 # Format the database
-def format_database(show_passwords = 0):
+def format_database(show_passwords=0):
     encryption_key = check_master_key_exists()
-    decrypted_logins_list = decrypt_database(encryption_key)
+    try:
+        decrypted_logins_list = decrypt_database(encryption_key)
+    except Exception as e:
+        print(f"Error decrypting database: {e}")
+        return ""  # Return an empty string or handle the error appropriately
+
 
     formatted_logins_list = []
     for string in list(decrypted_logins_list):
         try:
+            string.rstrip("\n")
             login_user, login_pass, website = string.split(":")
             if show_passwords == 0:
                 formatted_logins_list.append(f"{website}     |     {login_user}")
             elif show_passwords == 1:
                 formatted_logins_list.append(f"{website}     |     {login_user}     |     {login_pass}")
-        except ValueError:
-            print(f"Error processing line: {string}")
+        except (ValueError, IndexError) as e:
+            print(f"Error processing line: {string}, {e}")
             continue
-
 
     # Join list into a single string with newline characters
     formatted_logins_str = "\n".join(formatted_logins_list)
     return formatted_logins_str
 
 
+# Writes Logs to file
+def write_log(message):
+    log_entry = f"{datetime.datetime.now()} | {message}\n"
+
+    with open("logs.txt", "r+") as log_file:
+        content = log_file.read()  # Read the entire file content
+        log_file.seek(0, 0)  # Move the cursor to the start of the file
+        log_file.write(log_entry + content)  # Prepend the new log entry and the original content
+
+
+# Returns the log file for output
+def return_log_file():
+    with open("logs.txt", "r") as log_file:
+        # Read the log file into a string
+        log_file_contents_str = log_file.read()
+
+        # Split the logs into a list of tuples (timestamp, message)
+        log_entries = [log.split(' | ') for log in log_file_contents_str.strip().split('\n')]
+
+        # Join the sorted log entries
+        sorted_logs = '\n'.join([' | '.join(entry) for entry in log_entries])
+
+        return sorted_logs
+
 
 def window_login_menu():
-
     # Retrieves credentials
     def get_login_credentials():
+        write_log("Attempting to retrieve login credentials")
         username = get_username.get()
         password = get_password.get()
 
@@ -65,13 +96,14 @@ def window_login_menu():
             decrypted_user = return_user(encryption_key)
             decrypted_pass = return_pass(encryption_key)
         except Exception as e:
-            decrypted_user, decrypted_pass = None, None
+            print(f"Error retrieving credentials: {e}")
+            return None
 
         if decrypted_user is None or decrypted_pass is None:
             with open("master.txt", "wb") as f:
                 f.write(encrypted_user + b'\n')
                 f.write(encrypted_password + b'\n')
-            print("Credentials saved.")
+            write_log("New login saved")
             notification_label = Label(settings_frame, text="Credentials Saved", font=("Jacquard 12", 15, "bold"),
                                        fg="#ebebeb",
                                        bg="#3d3c3c")
@@ -89,6 +121,7 @@ def window_login_menu():
                                   font=("Jacquard 12", 15, "bold"), fg="#ebebeb", bg="#3d3c3c")
             warning_label.pack(anchor=CENTER, pady=2, padx=13)
             print("Incorrect username or password.")
+            write_log("Incorrect username or password")
 
     # Exit the login menu and pass on to the main menu if
     # the login was successful
@@ -96,11 +129,12 @@ def window_login_menu():
         encryption_key = check_master_key_exists()
         status = get_login_credentials()
         if status == 1:
+            write_log("Login successful")
+            write_log("Loading main menu")
             encrypt_database(encryption_key)
             # Destroy the login and show the main menu
             login_menu.destroy()
             window_main_menu()
-
 
     # Create the Tkinter window
     login_menu = Tk()
@@ -152,11 +186,12 @@ def window_login_menu():
 
 # The main menu
 def window_main_menu():
-
     # Menu pages
-    def view_logins():
+    def window_view_logins():
         encryption_key = check_master_key_exists()
+
         def exit_logins():
+            write_log("View Logins Destroyed")
             show_logins.destroy()
 
         def on_checkbox_unchecked():
@@ -167,7 +202,7 @@ def window_main_menu():
             print("Text box has been reloaded")
 
         def on_checkbox_checked():
-            # Assuming format_database(1) updates the data
+
             logins_text.config(state=NORMAL)  # Enable editing
             logins_text.delete("1.0", END)  # Clear the text box
             updated_logins_data = format_database(1)
@@ -180,6 +215,29 @@ def window_main_menu():
                 on_checkbox_checked()
             else:
                 on_checkbox_unchecked()
+
+        def find_login(ENABLED=None):
+            try:
+                logins_data = format_database(show_passwords_var.get())
+            except Exception as e:
+                print(f"Error fetching login data: {e}")
+                return
+            logins_list = [line for line in logins_data.splitlines() if line.strip()]
+            login_input = find_login_entry.get().strip()
+
+            found_logins_logins_text.config(state=NORMAL)  # Enable editing
+            found_logins_logins_text.delete("1.0", END)  # Clear the text box
+
+            found_any = False
+            for line in logins_list:
+                if login_input in line:
+                    found_any = True
+                    found_logins_logins_text.insert(END, line + '\n')  # Insert found line
+
+            if not found_any:
+                found_logins_logins_text.insert(END, "No matches found.")
+
+            found_logins_logins_text.config(state=DISABLED)  # Make the text box read-only
 
         show_logins = Toplevel(main_menu)
         show_logins.geometry("700x550")
@@ -197,18 +255,30 @@ def window_main_menu():
         back_button = Button(back_padding_frame, text="Back", font=("Jersey 15", 13), bg="#7e68a8", command=exit_logins)
         back_button.pack(side=LEFT, padx=10, pady=10)  # Controls vertical pad for whole bar
 
-        # Remove Duplicates Frame
+        # Show passwords checkbox Frame
         show_passwords_frame = Frame(show_logins, bg="#4d4c4c", width=160, height=50)
         show_passwords_frame.place(relx=0.7, rely=0.15)
 
         # Variable to hold the checkbox state
         show_passwords_var = BooleanVar()
 
-        # Remove Duplicates Checkbox
+        # Show passwords checkbox
         show_passwords_checkbox = Checkbutton(show_passwords_frame, text="Show Passwords", font=("Jersey 15", 13),
                                               bg="#7e68a8",
                                               variable=show_passwords_var, command=checkbox_click)
-        show_passwords_checkbox.place(relx=0.08, rely=0.2)
+        show_passwords_checkbox.place(relx=0.065, rely=0.2)
+
+        # Find login entry Frame
+        find_login_frame = Frame(show_logins, bg="#4d4c4c", width=200, height=80)
+        find_login_frame.place(relx=0.70, rely=0.26)
+
+        # Find login label
+        find_login_enter_button = Button(find_login_frame, text="Find Login:", font=("Jersey 15", 13), bg="#7e68a8",
+                                         fg="black", command=find_login)
+        find_login_enter_button.pack(padx=5, pady=10)
+        # Find login entry
+        find_login_entry = Entry(find_login_frame, width=20)
+        find_login_entry.pack(padx=18, pady=10)
 
         # Logins Frame
         logins_frame = Frame(show_logins, bg="#4d4c4c", width=670, height=230)
@@ -222,29 +292,75 @@ def window_main_menu():
         text_frame = Frame(logins_frame, bg="#4d4c4c")
         text_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
-        scrollbar = Scrollbar(text_frame)
-        scrollbar.pack(side=RIGHT, fill=Y)
+        scrollbar_y = Scrollbar(text_frame)
+        scrollbar_y.pack(side=RIGHT, fill=Y)
 
-        logins_text = Text(text_frame, wrap=NONE, yscrollcommand=scrollbar.set, bg="#3d3c3c", fg="white",
+        logins_text = Text(text_frame, wrap=WORD, yscrollcommand=scrollbar_y.set, bg="#3d3c3c", fg="white",
                            font=("Arial", 10), width=50)
         logins_text.pack(fill=BOTH, expand=True)
-        scrollbar.config(command=logins_text.yview)
+        scrollbar_y.config(command=logins_text.yview)
 
         # Load the formatted logins
         logins_data = format_database(0)
         logins_text.insert(END, logins_data)
         logins_text.config(state=DISABLED)  # Make the text box read-only
 
+        # Found login frame
+        found_logins_frame = Frame(show_logins, bg="#4d4c4c", width=10, height=10)
+        found_logins_frame.place(relx=0.698, rely=0.45)
+
+        # Label for "Found Logins :"
+        found_logins_label = Label(found_logins_frame, text="Found Logins :", bg="#4d4c4c", fg="white",
+                                   font=("Arial", 12))
+        found_logins_label.pack(anchor='w', padx=10, pady=5)
+
+        # Scrollable Text Box for found logins with horizontal scroll bar
+        found_logins_text_frame = Frame(found_logins_frame, bg="#4d4c4c")
+        found_logins_text_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
+
+        found_logins_scrollbar_x = Scrollbar(found_logins_text_frame, orient=HORIZONTAL)
+        found_logins_scrollbar_x.pack(side=BOTTOM, fill=X)
+
+        found_logins_logins_text = Text(found_logins_text_frame, wrap=NONE, xscrollcommand=found_logins_scrollbar_x.set,
+                                        bg="#3d3c3c", fg="white",
+                                        font=("Arial", 10), width=20, height=5)  # Adjusted height
+        found_logins_logins_text.pack(fill=BOTH, expand=True)
+        found_logins_scrollbar_x.config(command=found_logins_logins_text.xview)
+
+        # Load the formatted found logins
+        found_logins_logins_data = ""
+        found_logins_logins_text.insert(END, found_logins_logins_data)
+        found_logins_logins_text.config(state=DISABLED)  # Make the text box read-only
+
         # Encrypt the database before closing the window
         encrypt_database(encryption_key)  # Assuming encryption_key is defined somewhere
         show_logins.mainloop()
 
-    def add_logins():
+    def window_add_logins():
         def exit_logins():
+            write_log("Add Logins Destroyed")
             add_logins.destroy()
 
+        # Add new login to database
+        def add_login_to_database():
+            encryption_key = check_master_key_exists()
+            website = website_entry.get()
+            username = username_entry.get()
+            password = password_entry.get()
+            full_login = username + ":" + password + ":" + website
+            try:
+                encrypted_full_login = encrypt_message(full_login, encryption_key)
+            except Exception as e:
+                print(f"Error encrypting login: {e}")
+                return
+            with open("database.txt", "ab") as database_file:
+                database_file.write(encrypted_full_login)
+                database_file.write(b"\n")  # Write the newline character in bytes
+            print("Saved to file")
+            write_log("Login added to database")
+
         add_logins = Toplevel(main_menu)
-        add_logins.geometry("700x350")
+        add_logins.geometry("400x400")
         add_logins.title("Bunkr")
         add_logins.configure(background='#3d3c3c')
         add_logins.iconbitmap("assets/bunkrlogo.ico")
@@ -259,28 +375,64 @@ def window_main_menu():
         back_button = Button(back_padding_frame, text="Back", font=("Jersey 15", 13), bg="#7e68a8", command=exit_logins)
         back_button.pack(side=LEFT, padx=10, pady=10)  # Controls vertical pad for whole bar
 
-    def view_logs():
-        def exit_logs():
-            view_logs.destroy()
+        # Find login entry Frame
+        add_login_frame = Frame(add_logins, bg="#4d4c4c", width=200, height=80)
+        add_login_frame.place(relx=0.1, rely=0.25)
 
-        view_logs = Toplevel(main_menu)
-        view_logs.geometry("700x350")
-        view_logs.title("Bunkr")
-        view_logs.configure(background='#3d3c3c')
-        view_logs.iconbitmap("assets/bunkrlogo.ico")
+        # Find login label
+        add_login_enter_button = Button(add_login_frame, text="Add Login:", font=("Jersey 15", 13), bg="#7e68a8",
+                                        fg="black", command=add_login_to_database)
+        add_login_enter_button.pack(padx=5, pady=10)
+
+        # Website label
+        add_website_label = Label(add_login_frame, text="Website", font=("Jersey 15", 13), bg="#7e68a8", fg="black")
+        add_website_label.pack(padx=10, pady=5)
+
+        # Website entry
+        website_entry = Entry(add_login_frame, width=20)
+        website_entry.pack(padx=10, pady=10)
+
+        # Username label
+        add_username_label = Label(add_login_frame, text="Username", font=("Jersey 15", 13), bg="#7e68a8", fg="black")
+        add_username_label.pack(padx=10, pady=5)
+
+        # Username entry
+        username_entry = Entry(add_login_frame, width=20)
+        username_entry.pack(padx=10, pady=10)
+
+        # Password label
+        add_password_label = Label(add_login_frame, text="Password", font=("Jersey 15", 13), bg="#7e68a8", fg="black")
+        add_password_label.pack(padx=10, pady=5)
+
+        # Password entry
+        password_entry = Entry(add_login_frame, width=20)
+        password_entry.pack(padx=10, pady=10)
+
+    def window_import_data():
+        def exit_import_data():
+            write_log("Import Data Destroyed")
+            import_data.destroy()
+
+        import_data = Toplevel(main_menu)
+        import_data.geometry("700x350")
+        import_data.title("Bunkr")
+        import_data.configure(background='#3d3c3c')
+        import_data.iconbitmap("assets/bunkrlogo.ico")
         # Center the window
-        center_window(view_logs)
+        center_window(import_data)
 
         # Create a frame to act as padding with a different color
-        back_padding_frame = Frame(view_logs, bg="#4d4c4c", width=400, height=400)
+        back_padding_frame = Frame(import_data, bg="#4d4c4c", width=400, height=400)
         back_padding_frame.pack(padx=20, pady=20)
 
-        back_button = Button(back_padding_frame, text="Back", font=("Jersey 15", 13), bg="#7e68a8", command=exit_logs)
+        back_button = Button(back_padding_frame, text="Back", font=("Jersey 15", 13), bg="#7e68a8",
+                             command=exit_import_data)
         back_button.pack(side=LEFT, padx=10, pady=10)  # Controls vertical pad for whole bar
 
     # Help Window
-    def view_help():
+    def window_view_help():
         def exit_help():
+            write_log("View Help Destroyed")
             view_help.destroy()
 
         view_help = Toplevel(main_menu)  # Create a new top-level window
@@ -304,7 +456,6 @@ def window_main_menu():
         settings_frame = Frame(paragraph_padding_frame, bg="#3d3c3c")
         settings_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
-        # Define your paragraph text
         paragraph = """
         Home - \nShows usage statistics\n
         View Logins - \nDisplays all stored logins\n
@@ -321,8 +472,9 @@ def window_main_menu():
         view_help.mainloop()
 
     # Export Data Window
-    def export_data():
+    def window_export_data():
         def exit_export_data():
+            write_log("Export Data Destroyed")
             export_data.destroy()
 
         export_data = Toplevel(main_menu)
@@ -343,10 +495,19 @@ def window_main_menu():
         back_button.pack(side=LEFT, padx=10, pady=10)  # Controls vertical pad for whole bar
 
     def destroy_all_windows():
+        write_log("All Windows Destroyed")
         for window in main_menu.winfo_children():
             window.destroy()
         main_menu.destroy()
         window_login_menu()
+
+    def update_logs():
+        logs_data = return_log_file()
+        logs_text.config(state='normal')
+        logs_text.delete(1.0, END)
+        logs_text.insert(END, logs_data)
+        logs_text.config(state=DISABLED)
+        main_menu.after(5000, update_logs)  # Schedule this function to run again after 20 seconds
 
     # Create the main window
     main_menu = Tk()
@@ -367,19 +528,22 @@ def window_main_menu():
     home_button.pack(side=LEFT, padx=10, pady=10)  # Controls vertical pad for whole bar
 
     view_passwords_button = Button(padding_frame, text="View Logins", font=("Montserrat Light", 10),
-                                   command=view_logins)
+                                   command=window_view_logins)
     view_passwords_button.pack(side=LEFT, padx=10)
 
-    add_login_button = Button(padding_frame, text="Add Logins", font=("Montserrat Light", 10), command=add_logins)
+    add_login_button = Button(padding_frame, text="Add Logins", font=("Montserrat Light", 10),
+                              command=window_add_logins)
     add_login_button.pack(side=LEFT, padx=10)
 
-    remove_login_button = Button(padding_frame, text="View Logs", font=("Montserrat Light", 10), command=view_logs)
+    remove_login_button = Button(padding_frame, text="Import Data", font=("Montserrat Light", 10),
+                                 command=window_import_data)
     remove_login_button.pack(side=LEFT, padx=10)
 
-    export_data_button = Button(padding_frame, text="Export Data", font=("Montserrat Light", 10), command=export_data)
+    export_data_button = Button(padding_frame, text="Export Data", font=("Montserrat Light", 10),
+                                command=window_export_data)
     export_data_button.pack(side=LEFT, padx=10)
 
-    help_button = Button(padding_frame, text="Help", font=("Montserrat Light", 10), command=view_help)
+    help_button = Button(padding_frame, text="Help", font=("Montserrat Light", 10), command=window_view_help)
     help_button.pack(side=LEFT, padx=10)
 
     logins_stored_frame = Frame(main_menu, bg="#4d4c4c", width=275, height=80)
@@ -410,6 +574,29 @@ def window_main_menu():
                           command=lambda: update_login_count(line_count_text))
     count_button.place(relx=0.069, rely=0.45)
 
+    # Logs Frame
+    logs_frame = Frame(main_menu, bg="#4d4c4c", width=300, height=200)  # Adjust width and height here
+    logs_frame.place(relx=0.45, rely=0.25)
+
+    # Label for "Logins :"
+    logs_label = Label(logs_frame, text="Logs :", bg="#4d4c4c", fg="white", font=("Montserrat Light", 16))
+    logs_label.pack(anchor='w', padx=10, pady=5)
+
+    # Scrollable Text Box
+    text_frame = Frame(logs_frame, bg="#4d4c4c")
+    text_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
+
+    scrollbar = Scrollbar(text_frame)
+    scrollbar.pack(side=RIGHT, fill=Y)
+
+    logs_text = Text(text_frame, wrap=NONE, yscrollcommand=scrollbar.set, bg="#3d3c3c", fg="white",
+                     font=("Arial", 10), width=45, height=8)  # Adjust width and height for log box here
+    logs_text.pack(fill=BOTH, expand=True)
+    scrollbar.config(command=logs_text.yview)
+
+    # Update the log window
+    update_logs()
+
     # Footer text
     version_label = Label(main_menu, text="Bunkr-Password-Manager Pre-Alpha 0.0.1", font=("Montserrat Light", 10),
                           bg="#3d3c3c", fg="white", )
@@ -425,10 +612,10 @@ def window_main_menu():
     main_menu.mainloop()
 
 
-
 def main():
     # Login menu transitions to main menu
     window_login_menu()
+    #window_main_menu()
 
 
 if __name__ == '__main__':
